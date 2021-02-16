@@ -10,6 +10,7 @@ import UserStore from './modules/store.user.js'
 import NotificationStore from './modules/store.notifications.js'
 import SamplesStore from './modules/store.samples.js'
 import ShipmentStore from './modules/store.shipment.js'
+import SampleGroups from './modules/store.sample-groups.js'
 
 // Configuration
 import Options from 'models/options.js'
@@ -31,7 +32,8 @@ const store = new Vuex.Store({
     user: UserStore,
     notifications: NotificationStore,
     samples: SamplesStore,
-    shipment: ShipmentStore
+    shipment: ShipmentStore,
+    sampleGroups: SampleGroups
   },
   state: {
     // Flag we use to check if we have already setup options
@@ -68,9 +70,6 @@ const store = new Vuex.Store({
       state.help = !!helpFlag
       sessionStorage.setItem('ispyb_help', state.help)
     },
-    //
-    // Loading screen
-    //
     loading(state, status) {
       state.isLoading = !!status
     },
@@ -320,6 +319,9 @@ const store = new Vuex.Store({
         },
       })
     },
+    updateLoadingState({ commit }, payload) {
+      commit('loading', payload)
+    }
   },
   getters: {
     sso: state => state.auth.cas_sso,
