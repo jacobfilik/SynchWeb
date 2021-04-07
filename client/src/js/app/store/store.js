@@ -193,7 +193,7 @@ const store = new Vuex.Store({
       })
     },
 
-    // Method that returns a collection promise
+    // Method that returns a Model promise
     getModel(context, model) {
 
       return new Promise((resolve, reject) => {
@@ -230,6 +230,21 @@ const store = new Vuex.Store({
 
           error: function(err) {
             let response = err.responseJSON || {status: 400, message: 'Error saving model'}
+            reject(response)
+          },
+        })
+      })
+    },
+    // Method that deletes a model from the server
+    deleteModel(context, model) {
+      return new Promise((resolve, reject) => {
+        model.destroy({
+          success: function(result) {
+            resolve(result)
+          },
+
+          error: function(err) {
+            let response = err.responseJSON || { status: 400, message: 'Error deleting model'}
             reject(response)
           },
         })
