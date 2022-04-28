@@ -8,6 +8,7 @@ class Pod extends Page
 {
     public static $arg_list = array('id' => '\d+',
                                     'user' => '.*',
+                                    'app' => '.*',
                             );
 
     public static $dispatch = array(array('/h5web/:id', 'get', '_initiate_h5web_pod'),
@@ -28,12 +29,13 @@ class Pod extends Page
         $filePath = $this->_get_file_path();
         $path = $filePath['IMAGEDIRECTORY'];
         $file = $filePath['FILETEMPLATE'];
+        $app = $this->arg('app');
 
         // Insert row acknowledging a valid pod request was sent to SynchWeb
         // Need to update the Pod table app enum field to allow h5web and jnb (jupyter notebook)
         $this->db->pq("INSERT INTO Pod (podid, app, status, personid, filePath) 
                     VALUES (s_pod.nextval, :1, :2, :3, :4)",
-                    array('H5Web', 'Requested', $person, $path.$file));
+                    array($app, 'Requested', $person, $path.$file));
         $podId = $this->db->id();
 
         $data = array(
@@ -41,7 +43,7 @@ class Pod extends Page
             'path' => $path,
             'file' => $file,
             'podid' => $podId,
-            'app' => 'h5web'
+            'app' => $app,
         );
 
         global $h5web_service_url, $h5web_service_cert;

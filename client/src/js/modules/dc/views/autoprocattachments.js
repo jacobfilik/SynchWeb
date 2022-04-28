@@ -36,6 +36,12 @@ define(['marionette',
                 this.$el.append('<a href="#" class="button podReady" style="display:none">Ready!</a>')
             }
 
+            if(this.model.get('FILETYPE') == 'Result' && this.model.get('FILENAME').endsWith('.ipynb')) {
+                this.$el.append('<a href="#" class="button k8s">Launch Jupyter Notebook</a>')
+                this.$el.append('<span class="podLoader" style="display:none">Starting Pod...<i class="fa icon grey fa-cog fa-spin"></i></span>')
+                this.$el.append('<a href="#" class="button podReady" style="display:none">Ready!</a>')
+            }
+
             this.isPodRunning(this)
             this.listenTo(app, 'pod:started', this.podStarted)
             this.listenTo(app, 'pod:shutdown', this.podShutdown)
