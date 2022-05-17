@@ -11,25 +11,25 @@ class Pod extends Page
                                     'app' => '.*',
                             );
 
-    public static $dispatch = array(array('/h5web/:id', 'get', '_initiate_h5web_pod'),
-                                    array('/h5web/running/:id', 'get', '_h5web_pod_running'),
-                                    array('/h5web/status/:id', 'get', '_h5web_start_status'),
+    public static $dispatch = array(array('/:id', 'get', '_initiate_pod'),
+                                    array('/running/:id', 'get', '_pod_running'),
+                                    array('/status/:id', 'get', '_pod_start_status'),
                         );
 
     /**
      * Compile necessary parameters and send curl request to launcher application to start up a new pod
      */
-    function _initiate_h5web_pod(){
+    function _initiate_pod(){
         $person = $this->_get_person();
+        $app = $this->arg('app');
 
         // Currently we only allow users to spin up one H5Web pod and we can't map a new file into existing Pod
-        $personHasPod = $this->db->pq("SELECT podId FROM Pod WHERE status IS NOT NULL AND status !=:1 AND STATUS !=:2 AND personId =:3", array('Terminated', 'Failed', $person));
-        if(sizeof($personHasPod) > 0) $this->_error('You have an existing instance of the H5Web viewer running.');
+        $personHasPod = $this->db->pq("SELECT podId FROM Pod WHERE status IS NOT NULL AND status !=:1 AND STATUS !=:2 AND personId =:3 AND app =:4", array('Terminated', 'Failed', $person, $app));
+        if(sizeof($personHasPod) > 0) $this->_error('You have an existing instance of ' . $app . ' running.');
 
         $filePath = $this->_get_file_path();
         $path = $filePath['IMAGEDIRECTORY'];
         $file = $filePath['FILETEMPLATE'];
-        $app = $this->arg('app');
 
         // Insert row acknowledging a valid pod request was sent to SynchWeb
         // Need to update the Pod table app enum field to allow h5web and jnb (jupyter notebook)
@@ -54,7 +54,7 @@ class Pod extends Page
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_SLASHES));
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSLCERT, $h5web_service_cert);
+        //curl_setopt($ch, CURLOPT_SSLCERT, $h5web_service_cert); MUST BE UNCOMMENTED BEFORE COMMITTING ANYWHERE!!!
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // Blocks echo of curl response
         $result = curl_exec($ch);
         curl_close($ch);
@@ -66,7 +66,7 @@ class Pod extends Page
      * SynchWeb polls this method to check Pod status during Pod startup
      * Could be deprecated if we decide to wait for curl requests to complete (since initiate_pod will always succeed or fail)
      */
-    function _h5web_start_status() {
+    function _pod_start_status() {
         $podId = $this->arg('id');
         $row = $this->db->pq("SELECT status, ip, message FROM Pod where podId=:1", array($podId));
         $this->_output($row);
@@ -75,7 +75,7 @@ class Pod extends Page
     /**
      * SynchWeb polls this method to check if a Pod has terminated
      */
-    function _h5web_pod_running() {
+    function _pod_running() {
         $person = $this->_get_person();
 
         $filePath = $this->_get_file_path();

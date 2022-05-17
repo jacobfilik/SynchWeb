@@ -120,10 +120,11 @@ define([
 
             let self = this
             Backbone.ajax({
-                url: app.apiurl + '/pod/h5web/' + this.model.get('ID'),
+                url: app.apiurl + '/pod/' + this.model.get('ID'),
                 method: 'get',
                 data: {
-                    user: app.user
+                    user: app.user,
+                    app: 'H5Web',
                 },
                 success: function(response){
                     console.log('success: ' + response.podId)
@@ -155,7 +156,7 @@ define([
             var count = 0;
             var check = function(count){
                 Backbone.ajax({
-                    url: app.apiurl + '/pod/h5web/status/' + podId,
+                    url: app.apiurl + '/pod/status/' + podId,
                     method: 'get',
                     success: function(response){
                         console.log(response[0])
@@ -217,7 +218,7 @@ define([
 
         isPodRunning: function(self){
             Backbone.ajax({
-                url: app.apiurl + '/pod/h5web/running/' + self.model.get('ID'),
+                url: app.apiurl + '/pod/running/' + self.model.get('ID'),
                 method: 'get',
                 data: { user: app.user },
                 success: function(response){
