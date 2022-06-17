@@ -14,6 +14,7 @@ class Pod extends Page
     public static $dispatch = array(array('/:id', 'get', '_initiate_pod'),
                                     array('/running/:id', 'get', '_pod_running'),
                                     array('/status/:id', 'get', '_pod_start_status'),
+                                    array('/kill', 'post', '_kill_pod')
                         );
 
     /**
@@ -28,8 +29,8 @@ class Pod extends Page
         if(sizeof($personHasPod) > 0) $this->_error('You have an existing instance of ' . $app . ' running.');
 
         $filePath = $this->_get_file_path();
-        $path = $filePath['IMAGEDIRECTORY'];
-        $file = $filePath['FILETEMPLATE'];
+        $path = $filePath['FILEPATH'];
+        $file = $filePath['FILENAME'];
 
         // Insert row acknowledging a valid pod request was sent to SynchWeb
         // Need to update the Pod table app enum field to allow h5web and jnb (jupyter notebook)
@@ -54,7 +55,7 @@ class Pod extends Page
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_SLASHES));
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        //curl_setopt($ch, CURLOPT_SSLCERT, $h5web_service_cert); MUST BE UNCOMMENTED BEFORE COMMITTING ANYWHERE!!!
+        curl_setopt($ch, CURLOPT_SSLCERT, $h5web_service_cert);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // Blocks echo of curl response
         $result = curl_exec($ch);
         curl_close($ch);
@@ -68,7 +69,7 @@ class Pod extends Page
      */
     function _pod_start_status() {
         $podId = $this->arg('id');
-        $row = $this->db->pq("SELECT status, ip, message FROM Pod where podId=:1", array($podId));
+        $row = $this->db->pq("SELECT status, ip, message, app FROM Pod where podId=:1", array($podId));
         $this->_output($row);
     }
 
@@ -76,14 +77,16 @@ class Pod extends Page
      * SynchWeb polls this method to check if a Pod has terminated
      */
     function _pod_running() {
+        if(!$this->has_arg('app')) $this->_error('No app parameter provided!');
+
         $person = $this->_get_person();
 
         $filePath = $this->_get_file_path();
-        $path = $filePath['IMAGEDIRECTORY'];
-        $file = $filePath['FILETEMPLATE'];
+        $path = $filePath['FILEPATH'];
+        $file = $filePath['FILENAME'];
 
-        $row = $this->db->pq("SELECT ip FROM Pod WHERE filePath LIKE CONCAT(:1, '%') AND personId = :2 AND status = :3 ORDER BY created DESC LIMIT 1",
-                            array($path, $person, 'Running'));
+        $row = $this->db->pq("SELECT ip, app, message, filePath FROM Pod WHERE filePath LIKE CONCAT(:1, '%') AND personId = :2 AND status = :3 AND app = :4 ORDER BY created DESC LIMIT 1",
+                            array($path, $person, 'Running', $this->arg('app')));
 
         // Imperfect solution as it doesn't account for the visit number (app.vist on client side is broken)
         if(strpos($path, $this->arg('prop')) === false) {
@@ -91,6 +94,39 @@ class Pod extends Page
         } else {
             $this->_output($row);
         }
+    }
+
+    /**
+     * Look up which JNB pod has been requested for termination and send request to service launcher to initiate
+     * Only for JNB pods for now, H5Web pods will self terminate once all browsers referencing the pod are closed
+     */
+    function _kill_pod() {
+
+        if(!$this->has_arg('user') || !$this->has_arg('app')) $this->_error('No user or app provided. Invalid kill request');
+
+        $row = $this->db->pq("SELECT podId FROM Pod WHERE personId = :1 AND app = :2 AND status = :3", array($this->_get_person(), $this->arg('app'), 'Running'));
+        $podId = $row[0]['PODID'];
+        
+        $data = array(
+            'user' => $this->arg('user'),
+            'podid' => $podId,
+            'app' => $this->arg('app')
+        );
+
+        global $h5web_service_url, $h5web_service_cert;
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $h5web_service_url . "/kill");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_SLASHES));
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSLCERT, $h5web_service_cert);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // Blocks echo of curl response
+        $result = curl_exec($ch);
+        curl_close($ch);
+
+        $this->_output(array('podId' => $podId));
     }
 
     /**
@@ -106,17 +142,47 @@ class Pod extends Page
         return $row[0]['PERSONID'];
     }
 
+    function _get_file_path() {
+        switch($this->arg('app')){
+            case "H5Web":
+                return $this->_get_dc_file_path();
+                break;
+            case "JNB":
+                return $this->_get_autoproc_attachment_file_path();
+                break;
+            default:
+                $this->_error('invalid app provided');
+        }
+    }
+
     /**
      * Helper method to get file path associated with a data collection
      * The path & filename is passed into a pod or used as another query parameter to check a Pod status
      */
-    function _get_file_path() {
+    function _get_dc_file_path() {
         if(!$this->has_arg('id')) $this->_error('No DCID Provided!');
 
-        $row = $this->db->pq("SELECT imageDirectory, fileTemplate FROM datacollection WHERE datacollectionid =:1", array($this->arg('id')));
+        $row = $this->db->pq("SELECT imageDirectory as FILEPATH, fileTemplate as FILENAME FROM datacollection WHERE datacollectionid =:1", array($this->arg('id')));
         $item = $row[0];
-        $path = $item['IMAGEDIRECTORY'];
-        $file = $item['FILETEMPLATE'];
+        $path = $item['FILEPATH'];
+        $file = $item['FILENAME'];
+
+        if(!file_exists($path.$file)) $this->_error('File does not exist at the provided location!');
+
+        return $item;
+    }
+
+    /**
+     * Helper method to get file path associated with an auto processing attachment
+     * The path & filename is passed into a pod or used as another query parameter to check a Pod status
+     */
+    function _get_autoproc_attachment_file_path() {
+        if(!$this->has_arg('id')) $this->_error('No APPAID Provided!');
+
+        $row = $this->db->pq("SELECT filePath, fileName FROM AutoProcProgramAttachment WHERE autoProcProgramAttachmentId =:1", array($this->arg('id')));
+        $item = $row[0];
+        $path = $item['FILEPATH'] . "/";
+        $file = $item['FILENAME'];
 
         if(!file_exists($path.$file)) $this->_error('File does not exist at the provided location!');
 

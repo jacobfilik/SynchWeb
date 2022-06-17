@@ -16,7 +16,8 @@ define(['marionette',
             'click a.vaplog': 'showLog',
             'click a.vapplot': 'showPlots',
             'click a.k8s': 'initiatePod',
-            'click a.podReady': 'openPod'
+            'click a.podReady': 'openPod',
+            'click a.podKill': 'killPod'
         },
 
         render: function() {
@@ -31,15 +32,16 @@ define(['marionette',
             }
 
             if(this.model.get('FILETYPE') == 'Result' && this.canUseH5Web(this.model.get('FILENAME'))) {
-                this.$el.append('<a href="#" class="button k8s">Launch H5Web Viewer</a>')
+                this.$el.append('<a href="#" class="button k8s" data-app="H5Web">Launch H5Web Viewer</a>')
                 this.$el.append('<span class="podLoader" style="display:none">Starting Pod...<i class="fa icon grey fa-cog fa-spin"></i></span>')
-                this.$el.append('<a href="#" class="button podReady" style="display:none">Ready!</a>')
+                this.$el.append('<a href="#" class="button podReady" data-app="H5Web" style="display:none">Ready!</a>')
             }
 
             if(this.model.get('FILETYPE') == 'Result' && this.model.get('FILENAME').endsWith('.ipynb')) {
-                this.$el.append('<a href="#" class="button k8s">Launch Jupyter Notebook</a>')
+                this.$el.append('<a href="#" class="button k8s" data-app="JNB">Launch Jupyter Notebook</a>')
                 this.$el.append('<span class="podLoader" style="display:none">Starting Pod...<i class="fa icon grey fa-cog fa-spin"></i></span>')
-                this.$el.append('<a href="#" class="button podReady" style="display:none">Ready!</a>')
+                this.$el.append('<a href="#" class="button podReady" data-app="JNB" style="display:none">Ready!</a>')
+                this.$el.append('<a href="#" class="button podKill" data-app="JNB" style="display:none">Kill</a>')
             }
 
             this.isPodRunning(this)
@@ -115,12 +117,29 @@ define(['marionette',
             this.$el.find('.k8s')[0].style.display = 'none'
             this.$el.find('.podLoader')[0].style.display = 'inline'
 
+            // Add a data-app parameter to html button defining the app you want to launch
+            this.service = e.target.dataset.app
+            this.serviceId = ''
+
+            switch(this.service){
+                case "H5Web":
+                    this.serviceId = this.model.get('DATACOLLECTIONID')
+                    break
+                case "JNB":
+                    this.serviceId = this.model.get('AUTOPROCPROGRAMATTACHMENTID')
+                    break
+                default:
+                    app.alert({message: "Invalid app specified to launch"})
+                    return
+            }
+
             let self = this
             Backbone.ajax({
-                url: app.apiurl + '/pod/h5web/' + this.model.get('DATACOLLECTIONID'),
+                url: app.apiurl + '/pod/' + self.serviceId,
                 method: 'get',
                 data: {
-                    user: app.user
+                    user: app.user,
+                    app: self.service,
                 },
                 success: function(response){
                     console.log('success: ' + response.podId)
@@ -152,7 +171,7 @@ define(['marionette',
             var count = 0;
             var check = function(count){
                 Backbone.ajax({
-                    url: app.apiurl + '/pod/h5web/status/' + podId,
+                    url: app.apiurl + '/pod/status/' + podId,
                     method: 'get',
                     success: function(response){
                         console.log(response[0])
@@ -161,6 +180,11 @@ define(['marionette',
                             self.$el.find('.podLoader')[0].style.display = 'none'
                             self.$el.find('.podReady')[0].style.display = 'inline'
                             self.$el.find('.podReady')[0].setAttribute('data-podip', response[0].IP)
+
+                            if(response[0].APP == 'JNB') {
+                                self.$el.find('.podReady')[0].setAttribute('data-token', response[0].MESSAGE)
+                                self.$el.find('.podKill')[0].style.display = 'inline'
+                            }
 
                             self.podActive = true
                             self.startTimer()
@@ -194,6 +218,24 @@ define(['marionette',
 
         openPod: function(e){
             e.preventDefault()
+
+            var service = e.target.dataset.app
+
+            switch(service){
+                case "H5Web":
+                    this.openH5WebPod(e)
+                    break
+                case "JNB":
+                    this.openJNBPod(e)
+                    break
+                default:
+                    app.alert({message: "Invalid app specified to open"})
+                    return
+            }
+        },
+
+        openH5WebPod: function(e){
+            e.preventDefault()
             var ip = this.$el.find('.podReady')[0].getAttribute('data-podip')
 
             var visit = this.model.get('FILEPATH').match(/[a-z]{2}[0-9]{5}-\d+/)[0]
@@ -203,6 +245,15 @@ define(['marionette',
             window.open('http://'+ip+':8089/?file='+ path + '/' + this.model.get('FILENAME'))
         },
 
+        openJNBPod: function(e){
+            e.preventDefault()
+            var ip = this.$el.find('.podReady')[0].getAttribute('data-podip')
+            var token = this.$el.find('.podReady')[0].getAttribute('data-token')
+            var filename = this.model.get('FILENAME')
+
+            window.open('http://'+ip+':8888/notebooks/' + filename + token)
+        },
+
         startTimer: function(){
             let self = this
             var timer = setInterval(function(){ self.isPodRunning(self) }, 5000)
@@ -210,19 +261,48 @@ define(['marionette',
         },
 
         isPodRunning: function(self){
+            let fileName = this.model.get('FILENAME')
+            this.service = ''
+            this.serviceId = ''
+
+            if(this.canUseH5Web(fileName)) {
+                this.service = 'H5Web'
+                this.serviceId = this.model.get('DATACOLLECTIONID')
+            } else if (fileName.endsWith('.ipynb')) {
+                this.service = 'JNB'
+                this.serviceId = this.model.get('AUTOPROCPROGRAMATTACHMENTID')
+            } else {
+                console.log('File not associated with K8s service')
+                return
+            }
+
             Backbone.ajax({
-                url: app.apiurl + '/pod/h5web/running/' + self.model.get('DATACOLLECTIONID'),
+                url: app.apiurl + '/pod/running/' + self.serviceId,
                 method: 'get',
-                data: { user: app.user },
+                data: {
+                    user: app.user,
+                    app: self.service,
+                },
                 success: function(response){
                     if(response[0]){
                         // When navigating pages the ui elements may not immediately be available (from onRender)
                         // Check they are available for intended use to avoid errors that hurt performance
                         if(self.$el.find('.k8s')[0]){
-                            self.$el.find('.k8s')[0].style.display = 'none'
-                            self.$el.find('.podReady')[0].style.display = 'inline'
-                            self.$el.find('.podReady')[0].setAttribute('data-podip', response[0].IP)
-                            app.trigger('pod:started', response[0].IP)
+                            if(response[0].APP == 'JNB') {
+                                var path = self.model.get('FILEPATH') + self.model.get('FILENAME')
+                                if(response[0].FILEPATH == path){
+                                    self.$el.find(`[data-app='${self.service}']`)[0].style.display = 'none'
+                                    self.$el.find('.podReady')[0].style.display = 'inline'
+                                    self.$el.find('.podReady')[0].setAttribute('data-podip', response[0].IP)
+                                    self.$el.find('.podReady')[0].setAttribute('data-token', response[0].MESSAGE)
+                                    self.$el.find('.podKill')[0].style.display = 'inline'
+                                }
+                            } else {
+                                self.$el.find(`[data-app='${self.service}']`)[0].style.display = 'none'
+                                self.$el.find('.podReady')[0].style.display = 'inline'
+                                self.$el.find('.podReady')[0].setAttribute('data-podip', response[0].IP)
+                                app.trigger('pod:started', response[0])
+                            }
 
                             if(!self.podActive){
                                 self.podActive = true
@@ -234,6 +314,9 @@ define(['marionette',
                             self.$el.find('.podLoader')[0].style.display = 'none'
                             self.$el.find('.podReady')[0].style.display = 'none'
                             self.$el.find('.k8s')[0].style.display = 'inline'
+
+                            if(self.service == 'JNB')
+                                self.$el.find('.podKill')[0].style.display = 'none'
 
                             self.podActive = false
                             clearInterval(self.timer)
@@ -248,11 +331,20 @@ define(['marionette',
             })
         },
 
-        podStarted: function(ip){
-            if(this.$el.find('.k8s')[0]){
-                this.$el.find('.k8s')[0].style.display = 'none'
-                this.$el.find('.podReady')[0].style.display = 'inline'
-                this.$el.find('.podReady')[0].setAttribute('data-podip', ip)
+        podStarted: function(data){
+            if(this.$el.find(`[data-app='${data.APP}']`)[0]){
+                if(data.APP == 'JNB'){
+                    var path = self.model.get('FILEPATH') + self.model.get('FILENAME')
+                    if(data.FILEPATH == path){
+                        this.$el.find(`[data-app='${data.APP}']`)[0].style.display = 'none'
+                        this.$el.find('.podReady')[0].style.display = 'inline'
+                        this.$el.find('.podReady')[0].setAttribute('data-podip', data.IP)
+                    }
+                } else {
+                    this.$el.find(`[data-app='${data.APP}']`)[0].style.display = 'none'
+                    this.$el.find('.podReady')[0].style.display = 'inline'
+                    this.$el.find('.podReady')[0].setAttribute('data-podip', data.IP)
+                }
             }
         },
         podShutdown: function(){
@@ -260,6 +352,26 @@ define(['marionette',
                 this.$el.find('.k8s')[0].style.display = 'inline'
                 this.$el.find('.podReady')[0].style.display = 'none'
             }
+        },
+
+        killPod: function(){
+            Backbone.ajax({
+                url: app.apiurl + '/pod/kill',
+                method: 'post',
+                data: {
+                    user: app.user,
+                    app: 'JNB'
+                },
+                success: function(response){
+                    this.$el.find('.podKill')[0].style.display = 'none'
+                    this.$el.find('.podReady')[0].style.display = 'none'
+                    this.$el.find('.k8s')[0].style.display = 'inline'
+                },
+                error: function(response){
+                    console.log(response)
+                    app.alert({message: 'Failed to get terminate pod ' + response})
+                }
+            })
         }
     })
 

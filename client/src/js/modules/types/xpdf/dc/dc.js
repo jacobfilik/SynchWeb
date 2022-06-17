@@ -220,7 +220,10 @@ define([
             Backbone.ajax({
                 url: app.apiurl + '/pod/running/' + self.model.get('ID'),
                 method: 'get',
-                data: { user: app.user },
+                data: {
+                    user: app.user,
+                    app: 'H5Web',
+                },
                 success: function(response){
                     if(response[0]){
                         // When navigating pages the ui elements may not immediately be available (from onRender)
@@ -229,7 +232,7 @@ define([
                             self.ui.launcher.css('display', 'none')
                             self.ui.podReady.css('display', 'inline')
                             self.ui.podReady.attr('data-podip', response[0].IP)
-                            app.trigger('pod:started', response[0].IP)
+                            app.trigger('pod:started', response[0])
 
                             if(!self.podActive){
                                 self.podActive = true
@@ -252,10 +255,12 @@ define([
             })
         },
 
-        podStarted: function(ip){
-            this.ui.launcher.css('display', 'none')
-            this.ui.podReady.css('display', 'inline')
-            this.ui.podReady.attr('data-podip', ip)
+        podStarted: function(data){
+            if(this.$el.find(`[data-app='${data.APP}']`)[0]){
+                this.$el.find(`[data-app='${data.APP}']`)[0].style.display = 'none'
+                this.$el.find('.podReady')[0].style.display = 'inline'
+                this.$el.find('.podReady')[0].setAttribute('data-podip', data.IP)
+            }
         },
         podShutdown: function(){
             this.ui.launcher.css('display', 'inline')
