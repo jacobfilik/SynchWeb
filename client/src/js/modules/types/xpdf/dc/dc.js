@@ -53,9 +53,18 @@ define([
 
         // Check if this DC has a H5Web Viewer pod active for current user
         onRender: function() {
-            this.isPodRunning(this)
-            this.listenTo(app, 'pod:started', this.podStarted)
-            this.listenTo(app, 'pod:shutdown', this.podShutdown)
+            // Data Collection Groups appear to get past this check
+            // Page only shows the latest DC which could be a valid nexus file,
+            // but if another DC that is part of a group has a non existent file this check is undesirably bypassed and an error will be thrown
+            // Example visit: cm31136-2
+            // Example DCs: 8462267, 8377508
+            if(this.canUseH5Web(this.model.get('FILETEMPLATE'))) {
+                this.isPodRunning(this)
+                this.listenTo(app, 'pod:started', this.podStarted)
+                this.listenTo(app, 'pod:shutdown', this.podShutdown)
+            } else {
+                this.ui.launcher[0].style.display = 'none'
+            }
         },
 
         onDestroy: function() {
@@ -265,7 +274,17 @@ define([
         podShutdown: function(){
             this.ui.launcher.css('display', 'inline')
             this.ui.podReady.css('display', 'none')
-        }
+        },
+
+        canUseH5Web: function(filename) {
+            extensions = ['.nxs', '.h5', '.hdf', '.hdf5', '.ptyr']
+
+            for(var i=0; i<extensions.length; i++){
+                if(filename.endsWith(extensions[i]))
+                    return true
+            }
+            return false
+        },
     })
 
 })
