@@ -1,19 +1,21 @@
 define([
     'modules/types/gen/dc/dc',
     'modules/types/gen/dc/datplot',
+    'modules/dc/views/autointegration',
     'modules/dc/views/apstatusitem',
-    'modules/dc/views/downstream',
+    'modules/types/xpdf/dc/downstream',
     'utils',
-    'templates/types/xpdf/dc/dc.html'], function(DCItemView, DatPlot, APStatusItem, DCDownstreamView, utils, template) {
+    'templates/types/xpdf/dc/dc.html'], function(DCItemView, DCAutoIntegrationView, DatPlot, APStatusItem, DCDownstreamView, utils, template) {
 
 
     return DCItemView.extend({
         template: template,
         plotView: DatPlot,
         apStatusItem: APStatusItem,
-        
+
         events: {
-            'click .holder h1.dp': 'loadAP',
+            'click .holder h1.ap': 'loadAP',
+            'click .holder h1.dp': 'loadDP',
             'click .distl': 'showPlot',
             'click .diffraction': 'showDiff',
             'click .atp': 'addToProject',
@@ -36,17 +38,23 @@ define([
                 this.ui.params[0].innerHTML = "Scan Params: " + output
             }
         },
-        
+
         showDiff: function(e) {
             e.preventDefault()
             this.$el.find('.diffraction a').eq(0).trigger('click')
         },
 
-        loadAP: function() {
-            if (!this.ap) {
-              this.ap = new DCDownstreamView({ id: this.model.get('ID'), el: this.$el.find('div.downstream') })
-            } else this.ap.$el.slideToggle()
+        loadDP: function() {
+            if (!this.dp) {
+              this.dp = new DCDownstreamView({ id: this.model.get('ID'), el: this.$el.find('div.downstream') })
+            } else this.dp.$el.slideToggle()
         },
+
+        loadAP: function(e) {
+            if (!this.ap) {
+              this.ap = new DCAutoIntegrationView({ id: this.model.get('ID'), el: this.$el.find('div.autoproc') })
+            } else this.ap.$el.slideToggle()
+          },
 
         buildScanParams: function(params, output, level){
             for(var key in params){
